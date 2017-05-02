@@ -14,7 +14,12 @@ emptyStack =
 
 emptyDocument : Container
 emptyDocument =
-    Container Document []
+    emptyContainer Document
+
+
+emptyContainer : ContainerType -> Container
+emptyContainer containerType =
+    Container containerType []
 
 
 type Block
@@ -35,6 +40,7 @@ type alias Container =
 
 type ContainerType
     = Document
+    | BlockQuote
 
 
 type Leaf

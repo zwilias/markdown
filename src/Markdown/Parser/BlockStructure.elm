@@ -5,6 +5,7 @@ import Dict exposing (Dict)
 import Parser
     exposing
         ( Parser
+        , Count(..)
         , succeed
         , keep
         , zeroOrMore
@@ -16,6 +17,11 @@ import Parser
         , fail
         , inContext
         , delayedCommitMap
+        , repeat
+        , oneOrMore
+        , ignore
+        , source
+        , symbol
         , (|=)
         , (|.)
         )
@@ -49,22 +55,67 @@ lineParser { current, parents } =
             |> andThen (flip closeContainers currentContainers)
             |> map (List.reverse)
             |> andThen containersToStack
-            |> andThen openContainers
-            |> map2 (addLeafToStack) parseLeaf
+            |> map2 addContainersToStack (newContainers [])
+            |> map2 addLeafToStack parseLeaf
 
 
-openContainers : Stack -> Parser Stack
-openContainers stack =
-    succeed stack
+addContainersToStack : List Container -> Stack -> Stack
+addContainersToStack containers stack =
+    case containers of
+        [] ->
+            stack
+
+        container :: rest ->
+            addToStack stack container
+                |> addContainersToStack rest
+
+
+newContainers : List Container -> Parser (List Container)
+newContainers containers =
+    inContext "finding new containers" <|
+        oneOf
+            [ newContainer
+                -- WHY DOESN'T THIS TRIGGER?
+                -- In isolation it does.
+                -- I don't get it.
+                |> map (Debug.log "come on")
+                |> andThen (\c -> newContainers (c :: containers))
+            , succeed <| List.reverse containers
+            ]
+
+
+addToStack : Stack -> Container -> Stack
+addToStack stack container =
+    { stack
+        | current = container
+        , parents = stack.current :: stack.parents
+    }
+
+
+newContainer : Parser Container
+newContainer =
+    inContext "checking for a new container"
+        (oneOf [ blockQuote ]
+            |> map emptyContainer
+        )
+
+
+blockQuote : Parser ContainerType
+blockQuote =
+    inContext "block quote" <|
+        succeed
+            BlockQuote
+            |. symbol ">"
 
 
 parseLeaf : Parser Leaf
 parseLeaf =
-    oneOf
-        [ thematicBreak
-        , emptyLine
-        , textLine
-        ]
+    inContext "Looking for a Leaf" <|
+        oneOf
+            [ thematicBreak
+            , emptyLine
+            , textLine
+            ]
 
 
 thematicBreak : Parser Leaf
@@ -165,6 +216,9 @@ continueContainer : ContainerType -> Parser ()
 continueContainer containerType =
     case containerType of
         Document ->
+            succeed ()
+
+        BlockQuote ->
             succeed ()
 
 
