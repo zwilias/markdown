@@ -1,16 +1,17 @@
 module App exposing (main)
 
-import Markdown.Parser.BlockStructure.Types exposing (..)
-import Markdown.Parser.BlockStructure as BlockStructure
+import Markdown.AST exposing (..)
 import Markdown.Parser as Parser exposing (..)
 import Html exposing (Html, program)
 import Html.Attributes exposing (value)
 import Html.Events exposing (onInput)
+import Parser as P
+import Markdown.Renderer as Renderer
 
 
 type alias Model =
     { input : String
-    , output : BlockStructure.ParseResult
+    , output : Result P.Error (List Block)
     }
 
 
@@ -40,14 +41,16 @@ view { input, output } =
             ++ renderOutput output
 
 
-renderOutput : BlockStructure.ParseResult -> List (Html a)
+renderOutput : Result P.Error (List Block) -> List (Html a)
 renderOutput output =
     case output of
         Err error ->
             [ Html.pre [] [ Html.text <| toString error ] ]
 
         Ok doc ->
-            [ renderTree doc ]
+            [ renderTree doc
+            , Html.div [] <| Renderer.render doc
+            ]
 
 
 renderInput : String -> Html Msg
@@ -55,15 +58,10 @@ renderInput input =
     Html.textarea [ value input, onInput Input ] []
 
 
-renderHtml : List (Html a) -> Html a
-renderHtml =
-    Html.div []
-
-
-renderTree : ( List Block, b ) -> Html a
-renderTree ( blocks, _ ) =
+renderTree : List Block -> Html a
+renderTree blocks =
     Html.pre []
-        [ Html.text <| toString blocks
+        [ Html.text <| String.join "\n" <| List.map toString blocks
         ]
 
 

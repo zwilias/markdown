@@ -1,9 +1,18 @@
 module Markdown.Parser.BlockStructure.Types exposing (..)
 
+import Dict exposing (Dict)
+
 
 type alias Stack =
     { current : Container
     , parents : List Container
+    }
+
+
+type alias StackState =
+    { stack : Stack
+    , lastLineIsText : Bool
+    , unmatched : Int
     }
 
 
@@ -20,6 +29,10 @@ emptyDocument =
 emptyContainer : ContainerType -> Container
 emptyContainer containerType =
     Container containerType []
+
+
+type alias RefMap =
+    Dict String String
 
 
 type Block

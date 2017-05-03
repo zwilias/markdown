@@ -1,6 +1,7 @@
 module Markdown.Parser.BlockStructure exposing (processLines, ParseResult)
 
 import Markdown.Parser.BlockStructure.Types exposing (..)
+import Markdown.AST as AST
 import Dict exposing (Dict)
 import Parser
     exposing
@@ -10,7 +11,6 @@ import Parser
         , keep
         , zeroOrMore
         , map
-        , map2
         , andThen
         , lazy
         , oneOf
@@ -28,7 +28,7 @@ import Parser
 
 
 type alias ParseResult =
-    Result Parser.Error ( List Block, Dict String String )
+    Result Parser.Error ( List Block, RefMap )
 
 
 processLines : List String -> ParseResult
@@ -45,22 +45,59 @@ processLine line stack =
 
 
 lineParser : Stack -> Parser Stack
-lineParser { current, parents } =
+lineParser ({ current } as stack) =
+    tryOpenContainers (currentContainers stack)
+        |> andThen
+            (\unmatched ->
+                let
+                    lastLineIsText : Bool
+                    lastLineIsText =
+                        isText (List.head current.children)
+                in
+                    case current.type_ of
+                        -- TODO: verbatim containers
+                        _ ->
+                            succeed (closeAndAdd (StackState stack lastLineIsText unmatched))
+                                |= newContainers lastLineIsText []
+                                |= parseLeaf lastLineIsText
+            )
+
+
+currentContainers : Stack -> List Container
+currentContainers { current, parents } =
+    List.reverse <| current :: parents
+
+
+closeAndAdd : StackState -> List Container -> Leaf -> Stack
+closeAndAdd state newContainers leaf =
     let
-        currentContainers : List Container
-        currentContainers =
-            List.reverse <| current :: parents
+        closeUnmatchedAndContinue : Stack
+        closeUnmatchedAndContinue =
+            closeContainers state.unmatched (List.reverse <| currentContainers state.stack)
+                |> containersToStack
+                |> flip addContainersToStack newContainers
+                |> flip addLeafToStack leaf
     in
-        tryOpenContainers currentContainers
-            |> andThen (flip closeContainers (List.reverse currentContainers))
-            |> andThen containersToStack
-            |> flip2 map2 addContainersToStack (newContainers [])
-            |> flip2 map2 addLeafToStack parseLeaf
+        case ( newContainers, leaf ) of
+            ( [], Text _ ) ->
+                -- Handle lazy continuations
+                if state.unmatched > 0 && state.lastLineIsText then
+                    addLeafToStack state.stack leaf
+                else
+                    closeUnmatchedAndContinue
+
+            ( _, _ ) ->
+                closeUnmatchedAndContinue
 
 
-flip2 : (a -> b -> c -> d) -> a -> c -> b -> d
-flip2 f a1 a2 a3 =
-    f a1 a3 a2
+isText : Maybe Block -> Bool
+isText mBlock =
+    case mBlock of
+        Just (LeafBlock (Text _)) ->
+            True
+
+        _ ->
+            False
 
 
 addContainersToStack : Stack -> List Container -> Stack
@@ -73,12 +110,15 @@ addContainersToStack stack containers =
             addContainersToStack (addToStack stack container) rest
 
 
-newContainers : List Container -> Parser (List Container)
-newContainers containers =
+newContainers : Bool -> List Container -> Parser (List Container)
+newContainers lastLineIsText containers =
     inContext "finding new containers" <|
         oneOf
             [ newContainer
-                |> andThen (\c -> newContainers (c :: containers))
+                |> andThen
+                    (\c ->
+                        newContainers lastLineIsText (c :: containers)
+                    )
             , succeed <| List.reverse containers
             ]
 
@@ -129,8 +169,8 @@ optionalSpaces =
     ignore zeroOrMore ((==) ' ')
 
 
-parseLeaf : Parser Leaf
-parseLeaf =
+parseLeaf : Bool -> Parser Leaf
+parseLeaf lastLineIsText =
     inContext "Looking for a Leaf" <|
         oneOf
             [ thematicBreak
@@ -195,25 +235,25 @@ addLeafToStack { current, parents } leaf =
     let
         updatedCurrent : Container
         updatedCurrent =
-            { current | children = (LeafBlock leaf) :: current.children }
+            { current | children = LeafBlock leaf :: current.children }
     in
         Stack updatedCurrent parents
 
 
-containersToStack : List Container -> Parser Stack
+containersToStack : List Container -> Stack
 containersToStack containers =
     case containers of
         [] ->
-            fail "Expected at least the Document to remain on the stack"
+            Debug.crash "Expected at least the Document to remain on the stack"
 
         top :: parents ->
-            succeed <| Stack top parents
+            Stack top parents
 
 
-closeContainers : Int -> List Container -> Parser (List Container)
+closeContainers : Int -> List Container -> List Container
 closeContainers count containerList =
     if count == 0 then
-        succeed containerList
+        containerList
     else
         case containerList of
             container :: parent :: rest ->
@@ -222,7 +262,7 @@ closeContainers count containerList =
                     |> closeContainers (count - 1)
 
             _ ->
-                fail <|
+                Debug.crash <|
                     "Need to close "
                         ++ toString count
                         ++ "containers, but ran out."
@@ -247,7 +287,7 @@ tryOpenContainers containers =
         { type_ } :: rest ->
             oneOf
                 [ continueContainer type_
-                    |> andThen (\_ -> (tryOpenContainers rest))
+                    |> andThen (\_ -> tryOpenContainers rest)
                 , succeed (List.length containers)
                 ]
 
