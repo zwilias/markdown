@@ -35,6 +35,12 @@ renderLeaf leaf =
         ThematicBreak ->
             Html.hr [] []
 
+        SetextHeading level content ->
+            Html.node
+                ("h" ++ toString level)
+                []
+                (renderInline content)
+
 
 renderInline : Inline -> List (Html a)
 renderInline content =

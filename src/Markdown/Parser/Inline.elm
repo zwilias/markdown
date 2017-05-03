@@ -20,12 +20,10 @@ blocksToAST refMap blocks =
 
         (BS.LeafBlock (BS.Text t)) :: rest ->
             let
-                ( strings, otherBlocks ) =
-                    gatherText rest
+                ( leaf, otherBlocks ) =
+                    gatherText blocks
             in
-                (AST.Paragraph (String.join "\n" (t :: strings))
-                    |> AST.LeafBlock
-                )
+                (AST.LeafBlock leaf)
                     :: blocksToAST refMap otherBlocks
 
         (BS.LeafBlock (BS.EmptyLine _)) :: rest ->
@@ -33,6 +31,10 @@ blocksToAST refMap blocks =
 
         (BS.LeafBlock BS.ThematicBreak) :: rest ->
             AST.LeafBlock AST.ThematicBreak
+                :: blocksToAST refMap rest
+
+        (BS.LeafBlock (BS.SetextHeading _ content)) :: rest ->
+            Debug.log "Encountered a stray setext heading. Making it a paragraph, for now" (AST.LeafBlock (AST.Paragraph content))
                 :: blocksToAST refMap rest
 
         (BS.ContainerBlock container) :: rest ->
@@ -49,20 +51,19 @@ containerToAST refMap { type_, children } =
             Debug.crash "BS.Document not allowed at this level"
 
 
-gatherText : List BS.Block -> ( List String, List BS.Block )
+gatherText : List BS.Block -> ( AST.Leaf, List BS.Block )
 gatherText blocks =
-    let
-        ( strings, otherBlocks ) =
-            gatherTextHelper ( [], blocks )
-    in
-        ( List.reverse strings, otherBlocks )
+    gatherTextHelper ( [], blocks )
 
 
-gatherTextHelper : ( List String, List BS.Block ) -> ( List String, List BS.Block )
+gatherTextHelper : ( List String, List BS.Block ) -> ( AST.Leaf, List BS.Block )
 gatherTextHelper ( strings, blocks ) =
     case blocks of
         (BS.LeafBlock (BS.Text t)) :: rest ->
             gatherTextHelper ( t :: strings, rest )
 
+        (BS.LeafBlock (BS.SetextHeading level _)) :: rest ->
+            ( AST.SetextHeading level <| String.join "\n" <| List.reverse strings, rest )
+
         _ ->
-            ( strings, blocks )
+            ( AST.Paragraph <| String.join "\n" <| List.reverse strings, blocks )

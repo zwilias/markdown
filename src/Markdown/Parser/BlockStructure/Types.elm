@@ -59,4 +59,5 @@ type ContainerType
 type Leaf
     = Text String
     | EmptyLine String
+    | SetextHeading Int String
     | ThematicBreak

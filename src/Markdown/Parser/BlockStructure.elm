@@ -1,7 +1,6 @@
 module Markdown.Parser.BlockStructure exposing (processLines, ParseResult)
 
 import Markdown.Parser.BlockStructure.Types exposing (..)
-import Markdown.AST as AST
 import Dict exposing (Dict)
 import Parser
     exposing
@@ -59,7 +58,7 @@ lineParser ({ current } as stack) =
                         _ ->
                             succeed (closeAndAdd (StackState stack lastLineIsText unmatched))
                                 |= newContainers lastLineIsText []
-                                |= parseLeaf lastLineIsText
+                                |= parseLeaf (lastLineIsText && unmatched == 0)
             )
 
 
@@ -71,12 +70,12 @@ currentContainers { current, parents } =
 closeAndAdd : StackState -> List Container -> Leaf -> Stack
 closeAndAdd state newContainers leaf =
     let
-        closeUnmatchedAndContinue : Stack
-        closeUnmatchedAndContinue =
+        closeUnmatchedAndContinue : Leaf -> Stack
+        closeUnmatchedAndContinue leafToAdd =
             closeContainers state.unmatched (List.reverse <| currentContainers state.stack)
                 |> containersToStack
                 |> flip addContainersToStack newContainers
-                |> flip addLeafToStack leaf
+                |> flip addLeafToStack leafToAdd
     in
         case ( newContainers, leaf ) of
             ( [], Text _ ) ->
@@ -84,10 +83,16 @@ closeAndAdd state newContainers leaf =
                 if state.unmatched > 0 && state.lastLineIsText then
                     addLeafToStack state.stack leaf
                 else
-                    closeUnmatchedAndContinue
+                    closeUnmatchedAndContinue leaf
+
+            ( [], SetextHeading lvl content ) ->
+                if state.unmatched == 0 then
+                    addLeafToStack state.stack leaf
+                else
+                    addLeafToStack state.stack (Text content)
 
             ( _, _ ) ->
-                closeUnmatchedAndContinue
+                closeUnmatchedAndContinue leaf
 
 
 isText : Maybe Block -> Bool
@@ -173,10 +178,35 @@ parseLeaf : Bool -> Parser Leaf
 parseLeaf lastLineIsText =
     inContext "Looking for a Leaf" <|
         oneOf
-            [ thematicBreak
+            [ parseSetextHeading lastLineIsText
+            , thematicBreak
             , emptyLine
             , textLine
             ]
+
+
+parseSetextHeading : Bool -> Parser Leaf
+parseSetextHeading lastLineIsText =
+    let
+        setextParser : Char -> Int -> Parser Leaf
+        setextParser marker level =
+            succeed (SetextHeading level)
+                |. nonIndent
+                |= keep oneOrMore ((==) marker)
+                |. optionalSpaces
+                |. Parser.end
+    in
+        case lastLineIsText of
+            False ->
+                fail "Nope"
+
+            True ->
+                [ setextParser '-' 2
+                , setextParser '=' 1
+                ]
+                    |> List.map allOrNothing
+                    |> oneOf
+                    |> inContext "setext header"
 
 
 thematicBreak : Parser Leaf
