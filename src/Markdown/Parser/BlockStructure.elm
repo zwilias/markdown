@@ -101,7 +101,7 @@ newContainer =
 blockQuote : Parser ContainerType
 blockQuote =
     inContext "block quote" <|
-        try <|
+        allOrNothing <|
             succeed BlockQuote
                 |. nonIndent
                 |. symbol ">"
@@ -149,7 +149,7 @@ thematicBreak =
             , repeatingChar '-'
             ]
         |. optionalSpaces
-        |> try
+        |> allOrNothing
         |> inContext "thematic break"
 
 
@@ -160,7 +160,7 @@ repeatingChar marker =
         |. optionalSpaces
         |> repeat (AtLeast 3)
         |> map (always ())
-        |> try
+        |> allOrNothing
 
 
 textLine : Parser Leaf
@@ -174,7 +174,7 @@ emptyLine : Parser Leaf
 emptyLine =
     inContext "Empty line" <|
         map EmptyLine <|
-            try <|
+            allOrNothing <|
                 andThen
                     (\content ->
                         if String.length (String.trim content) > 0 then
@@ -185,8 +185,8 @@ emptyLine =
                     restOfLine
 
 
-try : Parser a -> Parser a
-try parser =
+allOrNothing : Parser a -> Parser a
+allOrNothing parser =
     delayedCommitMap always parser (succeed ())
 
 
@@ -259,7 +259,7 @@ continueContainer containerType =
             succeed ()
 
         BlockQuote ->
-            try blockQuote
+            allOrNothing blockQuote
                 |> map (always ())
 
 
