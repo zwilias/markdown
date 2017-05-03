@@ -47,9 +47,6 @@ processLine line stack =
 lineParser : Stack -> Parser Stack
 lineParser { current, parents } =
     let
-        _ =
-            Debug.log "current" current
-
         currentContainers : List Container
         currentContainers =
             List.reverse <| current :: parents
@@ -127,6 +124,11 @@ requiredSpaces =
     ignore oneOrMore ((==) ' ')
 
 
+optionalSpaces : Parser ()
+optionalSpaces =
+    ignore zeroOrMore ((==) ' ')
+
+
 parseLeaf : Parser Leaf
 parseLeaf =
     inContext "Looking for a Leaf" <|
@@ -139,7 +141,26 @@ parseLeaf =
 
 thematicBreak : Parser Leaf
 thematicBreak =
-    fail "nope"
+    succeed ThematicBreak
+        |. nonIndent
+        |. oneOf
+            [ repeatingChar '*'
+            , repeatingChar '_'
+            , repeatingChar '-'
+            ]
+        |. optionalSpaces
+        |> try
+        |> inContext "thematic break"
+
+
+repeatingChar : Char -> Parser ()
+repeatingChar marker =
+    succeed ()
+        |. ignore (Exactly 1) ((==) marker)
+        |. optionalSpaces
+        |> repeat (AtLeast 3)
+        |> map (always ())
+        |> try
 
 
 textLine : Parser Leaf
