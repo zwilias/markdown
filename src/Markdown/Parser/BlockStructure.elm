@@ -47,27 +47,33 @@ processLine line stack =
 lineParser : Stack -> Parser Stack
 lineParser { current, parents } =
     let
+        _ =
+            Debug.log "current" current
+
         currentContainers : List Container
         currentContainers =
             List.reverse <| current :: parents
     in
         tryOpenContainers currentContainers
-            |> andThen (flip closeContainers currentContainers)
-            |> map (List.reverse)
+            |> andThen (flip closeContainers (List.reverse currentContainers))
             |> andThen containersToStack
-            |> map2 addContainersToStack (newContainers [])
-            |> map2 addLeafToStack parseLeaf
+            |> flip2 map2 addContainersToStack (newContainers [])
+            |> flip2 map2 addLeafToStack parseLeaf
 
 
-addContainersToStack : List Container -> Stack -> Stack
-addContainersToStack containers stack =
+flip2 : (a -> b -> c -> d) -> a -> c -> b -> d
+flip2 f a1 a2 a3 =
+    f a1 a3 a2
+
+
+addContainersToStack : Stack -> List Container -> Stack
+addContainersToStack stack containers =
     case containers of
         [] ->
             stack
 
         container :: rest ->
-            addToStack stack container
-                |> addContainersToStack rest
+            addContainersToStack (addToStack stack container) rest
 
 
 newContainers : List Container -> Parser (List Container)
@@ -75,10 +81,6 @@ newContainers containers =
     inContext "finding new containers" <|
         oneOf
             [ newContainer
-                -- WHY DOESN'T THIS TRIGGER?
-                -- In isolation it does.
-                -- I don't get it.
-                |> map (Debug.log "come on")
                 |> andThen (\c -> newContainers (c :: containers))
             , succeed <| List.reverse containers
             ]
@@ -94,18 +96,35 @@ addToStack stack container =
 
 newContainer : Parser Container
 newContainer =
-    inContext "checking for a new container"
-        (oneOf [ blockQuote ]
-            |> map emptyContainer
-        )
+    oneOf [ blockQuote ]
+        |> map emptyContainer
+        |> inContext "checking for a new container"
 
 
 blockQuote : Parser ContainerType
 blockQuote =
     inContext "block quote" <|
-        succeed
-            BlockQuote
-            |. symbol ">"
+        try <|
+            succeed BlockQuote
+                |. nonIndent
+                |. symbol ">"
+                |. requiredSpaces
+
+
+nonIndent : Parser ()
+nonIndent =
+    List.range 0 3
+        |> List.reverse
+        |> List.map
+            (\x ->
+                ignore (Exactly x) ((==) ' ')
+            )
+        |> oneOf
+
+
+requiredSpaces : Parser ()
+requiredSpaces =
+    ignore oneOrMore ((==) ' ')
 
 
 parseLeaf : Parser Leaf
@@ -150,8 +169,8 @@ try parser =
     delayedCommitMap always parser (succeed ())
 
 
-addLeafToStack : Leaf -> Stack -> Stack
-addLeafToStack leaf { current, parents } =
+addLeafToStack : Stack -> Leaf -> Stack
+addLeafToStack { current, parents } leaf =
     let
         updatedCurrent : Container
         updatedCurrent =
@@ -195,7 +214,7 @@ closeContainer container parent =
         updatedContainer =
             { container | children = List.reverse container.children }
     in
-        addBlockToContainer (ContainerBlock container) parent
+        addBlockToContainer (ContainerBlock updatedContainer) parent
 
 
 tryOpenContainers : List Container -> Parser Int
@@ -219,7 +238,8 @@ continueContainer containerType =
             succeed ()
 
         BlockQuote ->
-            succeed ()
+            try blockQuote
+                |> map (always ())
 
 
 closeStack : Stack -> List Block
