@@ -9,6 +9,7 @@ type Block
 type Container
     = BlockQuote (List Block)
     | IndentedCode String
+    | FencedCode String String
 
 
 type alias Inline =

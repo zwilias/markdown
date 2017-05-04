@@ -55,6 +55,7 @@ type ContainerType
     = Document
     | BlockQuote
     | IndentedCode
+    | FencedCode Int String String
 
 
 type Leaf

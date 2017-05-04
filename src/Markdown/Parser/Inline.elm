@@ -54,6 +54,9 @@ containerToAST refMap { type_, children } =
         BS.IndentedCode ->
             AST.ContainerBlock <| AST.IndentedCode (gatherText children)
 
+        BS.FencedCode _ _ info ->
+            AST.ContainerBlock <| AST.FencedCode info (gatherText children)
+
         _ ->
             Debug.crash "BS.Document not allowed at this level"
 

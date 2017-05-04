@@ -53,9 +53,13 @@ lineParser ({ current } as stack) =
                     lastLineIsText =
                         isText (List.head current.children)
                 in
-                    succeed (closeAndAdd (StackState stack lastLineIsText unmatched))
-                        |= newContainers lastLineIsText []
-                        |= parseLeaf (lastLineIsText && unmatched == 0)
+                    if unmatched == 0 && isVerbatimContainer current.type_ then
+                        succeed (closeAndAdd (StackState stack lastLineIsText unmatched) [])
+                            |= parseLeaf (lastLineIsText && unmatched == 0)
+                    else
+                        succeed (closeAndAdd (StackState stack lastLineIsText unmatched))
+                            |= newContainers lastLineIsText []
+                            |= parseLeaf (lastLineIsText && unmatched == 0)
             )
 
 
@@ -69,16 +73,17 @@ closeAndAdd state newContainers leaf =
     let
         closeUnmatchedAndContinue : Leaf -> Stack
         closeUnmatchedAndContinue leafToAdd =
-            closeContainers state.unmatched (List.reverse <| currentContainers state.stack)
+            closeContainers state.unmatched
+                (List.reverse <| currentContainers state.stack)
                 |> containersToStack
                 |> flip addContainersToStack newContainers
                 |> flip addLeafToStack leafToAdd
     in
-        case ( newContainers, leaf ) of
-            ( [], Text _ ) ->
+        case leaf of
+            Text _ ->
                 -- Handle lazy continuations
                 if
-                    (state.stack.current.type_ /= IndentedCode)
+                    (not <| isVerbatimContainer state.stack.current.type_)
                         && (state.unmatched > 0)
                         && (state.lastLineIsText)
                 then
@@ -86,14 +91,27 @@ closeAndAdd state newContainers leaf =
                 else
                     closeUnmatchedAndContinue leaf
 
-            ( [], SetextHeading lvl content ) ->
+            SetextHeading lvl content ->
                 if state.unmatched == 0 then
                     addLeafToStack state.stack leaf
                 else
                     addLeafToStack state.stack (Text content)
 
-            ( _, _ ) ->
+            _ ->
                 closeUnmatchedAndContinue leaf
+
+
+isVerbatimContainer : ContainerType -> Bool
+isVerbatimContainer containerType =
+    case containerType of
+        IndentedCode ->
+            True
+
+        FencedCode _ _ _ ->
+            True
+
+        _ ->
+            False
 
 
 isText : Maybe Block -> Bool
@@ -123,13 +141,10 @@ newContainers lastLineIsText containers =
             [ newContainer lastLineIsText
                 |> andThen
                     (\c ->
-                        case c.type_ of
-                            IndentedCode ->
-                                succeed (List.reverse (c :: containers))
-
-                            _ ->
-                                newContainers lastLineIsText
-                                    (c :: containers)
+                        if isVerbatimContainer c.type_ then
+                            succeed (List.reverse (c :: containers))
+                        else
+                            newContainers lastLineIsText (c :: containers)
                     )
             , succeed <| List.reverse containers
             ]
@@ -148,6 +163,7 @@ newContainer lastLineIsText =
     oneOf
         [ blockQuote
         , indentedCode lastLineIsText
+        , fencedCodeBlock
         ]
         |> map emptyContainer
         |> inContext "checking for a new container"
@@ -171,6 +187,28 @@ blockQuote =
                 |. nonIndent
                 |. symbol ">"
                 |. optionalSpace
+
+
+fencedCodeBlock : Parser ContainerType
+fencedCodeBlock =
+    let
+        infoParser : Parser String
+        infoParser =
+            succeed identity
+                |= keep zeroOrMore ((/=) '`')
+                |. optionalSpaces
+                |. Parser.end
+    in
+        allOrNothing <|
+            succeed FencedCode
+                |= map String.length (source nonIndent)
+                |= (oneOf
+                        [ keep (AtLeast 3) ((==) '`')
+                        , keep (AtLeast 3) ((==) '~')
+                        ]
+                   )
+                |. optionalSpaces
+                |= map (String.words >> List.head >> Maybe.withDefault "") infoParser
 
 
 optionalSpace : Parser ()
@@ -424,6 +462,9 @@ continueContainer containerType =
                     [ map (always ()) emptyLine
                     , ignore (Exactly 4) ((==) ' ')
                     ]
+
+        FencedCode _ _ _ ->
+            succeed ()
 
 
 closeStack : Stack -> List Block

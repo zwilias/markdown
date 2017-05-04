@@ -2,6 +2,7 @@ module Markdown.Renderer exposing (render)
 
 import Markdown.AST exposing (..)
 import Html exposing (Html)
+import Html.Attributes exposing (class)
 
 
 render : List Block -> List (Html a)
@@ -26,7 +27,18 @@ renderContainer container =
             Html.blockquote [] (render blocks)
 
         IndentedCode code ->
-            Html.pre [] [ Html.text code ]
+            Html.pre [] [ Html.code [] [ Html.text code ] ]
+
+        FencedCode info code ->
+            let
+                attrs : List (Html.Attribute a)
+                attrs =
+                    if info == "" then
+                        []
+                    else
+                        [ class <| "language-" ++ info ]
+            in
+                Html.pre [] [ Html.code attrs [ Html.text code ] ]
 
 
 renderLeaf : Leaf -> Html a
