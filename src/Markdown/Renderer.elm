@@ -25,6 +25,9 @@ renderContainer container =
         BlockQuote blocks ->
             Html.blockquote [] (render blocks)
 
+        IndentedCode code ->
+            Html.pre [] [ Html.text code ]
+
 
 renderLeaf : Leaf -> Html a
 renderLeaf leaf =

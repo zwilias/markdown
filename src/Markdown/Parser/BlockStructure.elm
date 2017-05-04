@@ -53,12 +53,9 @@ lineParser ({ current } as stack) =
                     lastLineIsText =
                         isText (List.head current.children)
                 in
-                    case current.type_ of
-                        -- TODO: verbatim containers
-                        _ ->
-                            succeed (closeAndAdd (StackState stack lastLineIsText unmatched))
-                                |= newContainers lastLineIsText []
-                                |= parseLeaf (lastLineIsText && unmatched == 0)
+                    succeed (closeAndAdd (StackState stack lastLineIsText unmatched))
+                        |= newContainers lastLineIsText []
+                        |= parseLeaf (lastLineIsText && unmatched == 0)
             )
 
 
@@ -80,7 +77,11 @@ closeAndAdd state newContainers leaf =
         case ( newContainers, leaf ) of
             ( [], Text _ ) ->
                 -- Handle lazy continuations
-                if state.unmatched > 0 && state.lastLineIsText then
+                if
+                    (state.stack.current.type_ /= IndentedCode)
+                        && (state.unmatched > 0)
+                        && (state.lastLineIsText)
+                then
                     addLeafToStack state.stack leaf
                 else
                     closeUnmatchedAndContinue leaf
@@ -119,10 +120,16 @@ newContainers : Bool -> List Container -> Parser (List Container)
 newContainers lastLineIsText containers =
     inContext "finding new containers" <|
         oneOf
-            [ newContainer
+            [ newContainer lastLineIsText
                 |> andThen
                     (\c ->
-                        newContainers lastLineIsText (c :: containers)
+                        case c.type_ of
+                            IndentedCode ->
+                                succeed (List.reverse (c :: containers))
+
+                            _ ->
+                                newContainers lastLineIsText
+                                    (c :: containers)
                     )
             , succeed <| List.reverse containers
             ]
@@ -136,11 +143,24 @@ addToStack stack container =
     }
 
 
-newContainer : Parser Container
-newContainer =
-    oneOf [ blockQuote ]
+newContainer : Bool -> Parser Container
+newContainer lastLineIsText =
+    oneOf
+        [ blockQuote
+        , indentedCode lastLineIsText
+        ]
         |> map emptyContainer
         |> inContext "checking for a new container"
+
+
+indentedCode : Bool -> Parser ContainerType
+indentedCode lastLineIsText =
+    if lastLineIsText then
+        fail "Need an empty line before this"
+    else
+        allOrNothing <|
+            succeed IndentedCode
+                |. ignore (Exactly 4) ((==) ' ')
 
 
 blockQuote : Parser ContainerType
@@ -150,7 +170,15 @@ blockQuote =
             succeed BlockQuote
                 |. nonIndent
                 |. symbol ">"
-                |. requiredSpaces
+                |. optionalSpace
+
+
+optionalSpace : Parser ()
+optionalSpace =
+    oneOf
+        [ allOrNothing <| ignore (Exactly 1) ((==) ' ')
+        , succeed ()
+        ]
 
 
 nonIndent : Parser ()
@@ -389,6 +417,13 @@ continueContainer containerType =
         BlockQuote ->
             allOrNothing blockQuote
                 |> map (always ())
+
+        IndentedCode ->
+            allOrNothing <|
+                oneOf
+                    [ map (always ()) emptyLine
+                    , ignore (Exactly 4) ((==) ' ')
+                    ]
 
 
 closeStack : Stack -> List Block

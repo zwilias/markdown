@@ -8,6 +8,7 @@ type Block
 
 type Container
     = BlockQuote (List Block)
+    | IndentedCode String
 
 
 type alias Inline =

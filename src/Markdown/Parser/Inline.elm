@@ -21,7 +21,7 @@ blocksToAST refMap blocks =
         (BS.LeafBlock (BS.Text t)) :: rest ->
             let
                 ( leaf, otherBlocks ) =
-                    gatherText blocks
+                    paragraphOrSetext blocks
             in
                 (AST.LeafBlock leaf)
                     :: blocksToAST refMap otherBlocks
@@ -51,20 +51,39 @@ containerToAST refMap { type_, children } =
         BS.BlockQuote ->
             AST.ContainerBlock <| AST.BlockQuote (blocksToAST refMap children)
 
+        BS.IndentedCode ->
+            AST.ContainerBlock <| AST.IndentedCode (gatherText children)
+
         _ ->
             Debug.crash "BS.Document not allowed at this level"
 
 
-gatherText : List BS.Block -> ( AST.Leaf, List BS.Block )
+gatherText : List BS.Block -> String
 gatherText blocks =
-    gatherTextHelper ( [], blocks )
+    case blocks of
+        [] ->
+            ""
+
+        (BS.LeafBlock (BS.Text t)) :: rest ->
+            t ++ "\n" ++ (gatherText rest)
+
+        (BS.LeafBlock (BS.EmptyLine t)) :: rest ->
+            t ++ "\n" ++ (gatherText rest)
+
+        _ ->
+            Debug.crash "This looks a container _in_ a code-block."
 
 
-gatherTextHelper : ( List String, List BS.Block ) -> ( AST.Leaf, List BS.Block )
-gatherTextHelper ( strings, blocks ) =
+paragraphOrSetext : List BS.Block -> ( AST.Leaf, List BS.Block )
+paragraphOrSetext blocks =
+    paragraphOrSetextHelper ( [], blocks )
+
+
+paragraphOrSetextHelper : ( List String, List BS.Block ) -> ( AST.Leaf, List BS.Block )
+paragraphOrSetextHelper ( strings, blocks ) =
     case blocks of
         (BS.LeafBlock (BS.Text t)) :: rest ->
-            gatherTextHelper ( t :: strings, rest )
+            paragraphOrSetextHelper ( t :: strings, rest )
 
         (BS.LeafBlock (BS.SetextHeading level _)) :: rest ->
             ( AST.Heading level <| String.join "\n" <| List.reverse strings, rest )

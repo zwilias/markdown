@@ -54,6 +54,7 @@ type alias Container =
 type ContainerType
     = Document
     | BlockQuote
+    | IndentedCode
 
 
 type Leaf
