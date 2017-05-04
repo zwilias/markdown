@@ -11,5 +11,5 @@ ${source}
 """
 EOF
 
-./node_modules/.bin/elm-static-html -f Test.elm -o tmp.txt >/dev/null &&
+../node_modules/.bin/elm-static-html -f Test.elm -o tmp.txt >/dev/null &&
     sed '1d;$d' tmp.txt

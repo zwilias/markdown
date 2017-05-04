@@ -1,0 +1,4 @@
+{
+  "root": "../src",
+  "tests": ["Markdown.Parser.BlockStructure"]
+}

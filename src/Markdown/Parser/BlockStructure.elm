@@ -1,4 +1,10 @@
-module Markdown.Parser.BlockStructure exposing (processLines, ParseResult)
+module Markdown.Parser.BlockStructure exposing (..)
+
+{-|
+
+    >>> import Markdown.Parser.BlockStructure.Types exposing (..)
+    >>> import Parser
+-}
 
 import Markdown.Parser.BlockStructure.Types exposing (..)
 import Dict exposing (Dict)
@@ -114,6 +120,18 @@ isVerbatimContainer containerType =
             False
 
 
+{-| Helper to check if a `Maybe Block` contains a text node
+
+    >>> isText Nothing
+    False
+
+    >>> isText <| Just (ContainerBlock emptyDocument)
+    False
+
+    >>> isText <| Just (LeafBlock (Text "Hi there"))
+    True
+
+-}
 isText : Maybe Block -> Bool
 isText mBlock =
     case mBlock of
@@ -169,6 +187,20 @@ newContainer lastLineIsText =
         |> inContext "checking for a new container"
 
 
+{-| Parses opening of an indented code block
+
+    >>> Parser.run (indentedCode True) "    Hi"
+    ... |> Result.mapError (always "err")
+    Err "err"
+
+    >>> Parser.run (indentedCode False) "    Hi"
+    Ok IndentedCode
+
+    >>> Parser.run (indentedCode True) "nope"
+    ... |> Result.mapError (always "err")
+    Err "err"
+
+-}
 indentedCode : Bool -> Parser ContainerType
 indentedCode lastLineIsText =
     if lastLineIsText then
@@ -179,6 +211,16 @@ indentedCode lastLineIsText =
                 |. ignore (Exactly 4) ((==) ' ')
 
 
+{-| Parses the opening of a blockQuote
+
+    >>> Parser.run blockQuote "> hi there"
+    Ok BlockQuote
+
+    >>> Parser.run blockQuote "nope"
+    ... |> Result.mapError (always "err")
+    Err "err"
+
+-}
 blockQuote : Parser ContainerType
 blockQuote =
     inContext "block quote" <|
@@ -189,6 +231,19 @@ blockQuote =
                 |. optionalSpace
 
 
+{-| Parses the opening *line* of a fencedCodeBlock
+
+    >>> Parser.run fencedCodeBlock "```elm"
+    Ok (FencedCode 0 "```" "elm")
+
+    >>> Parser.run fencedCodeBlock "   ~~~~~~~  "
+    Ok (FencedCode 3 "~~~~~~~" "")
+
+    >>> Parser.run fencedCodeBlock "nope"
+    ... |> Result.mapError (always "err")
+    Err "err"
+
+-}
 fencedCodeBlock : Parser ContainerType
 fencedCodeBlock =
     let
@@ -219,22 +274,56 @@ optionalSpace =
         ]
 
 
+{-| Parses non-indent spaces at the start of the line. IOW, 0 to 3 spaces is OK
+
+    >>> Parser.run nonIndent ""
+    Ok ()
+
+    >>> Parser.run nonIndent "   3 spaces"
+    Ok ()
+
+    >>> Parser.run nonIndent "    4 spaces"
+    ... |> Result.mapError (always "err")
+    Err "err"
+
+-}
 nonIndent : Parser ()
 nonIndent =
-    List.range 0 3
-        |> List.reverse
-        |> List.map
-            (\x ->
-                ignore (Exactly x) ((==) ' ')
-            )
-        |> oneOf
+    bounded 0 3 ((==) ' ')
+        |> map (always ())
 
 
+{-| Parses one or more spaces
+
+    >>> Parser.run requiredSpaces " "
+    Ok ()
+
+    >>> Parser.run requiredSpaces "foo"
+    ... |> Result.mapError (always "err")
+    Err "err"
+
+    >>> Parser.run requiredSpaces ""
+    ... |> Result.mapError (always "err")
+    Err "err"
+
+-}
 requiredSpaces : Parser ()
 requiredSpaces =
     ignore oneOrMore ((==) ' ')
 
 
+{-| Parses zero or more spaces
+
+    >>> Parser.run optionalSpaces " "
+    Ok ()
+
+    >>> Parser.run optionalSpaces "foo"
+    Ok ()
+
+    >>> Parser.run optionalSpaces ""
+    Ok ()
+
+-}
 optionalSpaces : Parser ()
 optionalSpaces =
     ignore zeroOrMore ((==) ' ')
