@@ -178,15 +178,16 @@ parseLeaf : Bool -> Parser Leaf
 parseLeaf lastLineIsText =
     inContext "Looking for a Leaf" <|
         oneOf
-            [ parseSetextHeading lastLineIsText
+            [ setextHeading lastLineIsText
+            , atxHeading
             , thematicBreak
             , emptyLine
             , textLine
             ]
 
 
-parseSetextHeading : Bool -> Parser Leaf
-parseSetextHeading lastLineIsText =
+setextHeading : Bool -> Parser Leaf
+setextHeading lastLineIsText =
     let
         setextParser : Char -> Int -> Parser Leaf
         setextParser marker level =
@@ -207,6 +208,63 @@ parseSetextHeading lastLineIsText =
                     |> List.map allOrNothing
                     |> oneOf
                     |> inContext "setext header"
+
+
+dropWhile : (a -> Bool) -> List a -> List a
+dropWhile pred list =
+    case list of
+        [] ->
+            []
+
+        head :: tail ->
+            if pred head then
+                dropWhile pred tail
+            else
+                list
+
+
+atxHeading : Parser Leaf
+atxHeading =
+    let
+        parseAtxContent : String -> Parser String
+        parseAtxContent content =
+            if
+                (String.length content > 0)
+                    && (String.startsWith " " content == False)
+            then
+                fail <|
+                    "Nonempty content needs to start with spaces: \""
+                        ++ content
+                        ++ "\""
+            else
+                String.words content
+                    |> List.reverse
+                    |> dropWhile (String.all ((==) '#'))
+                    |> List.reverse
+                    |> String.join " "
+                    |> succeed
+    in
+        succeed ATXHeading
+            |. nonIndent
+            |= map String.length (bounded 1 6 ((==) '#'))
+            |= (restOfLine
+                    |> map String.trimRight
+                    |> andThen parseAtxContent
+               )
+            |> allOrNothing
+
+
+bounded : Int -> Int -> (Char -> Bool) -> Parser String
+bounded min max predicate =
+    keep (AtLeast min) predicate
+        |> andThen
+            (\s ->
+                if String.length s > max then
+                    fail <| "at most " ++ toString max
+                else
+                    succeed s
+            )
+        |> allOrNothing
 
 
 thematicBreak : Parser Leaf

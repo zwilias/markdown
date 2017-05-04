@@ -37,6 +37,10 @@ blocksToAST refMap blocks =
             Debug.log "Encountered a stray setext heading. Making it a paragraph, for now" (AST.LeafBlock (AST.Paragraph content))
                 :: blocksToAST refMap rest
 
+        (BS.LeafBlock (BS.ATXHeading lvl content)) :: rest ->
+            AST.LeafBlock (AST.Heading lvl content)
+                :: blocksToAST refMap rest
+
         (BS.ContainerBlock container) :: rest ->
             containerToAST refMap container :: blocksToAST refMap rest
 
@@ -63,7 +67,7 @@ gatherTextHelper ( strings, blocks ) =
             gatherTextHelper ( t :: strings, rest )
 
         (BS.LeafBlock (BS.SetextHeading level _)) :: rest ->
-            ( AST.SetextHeading level <| String.join "\n" <| List.reverse strings, rest )
+            ( AST.Heading level <| String.join "\n" <| List.reverse strings, rest )
 
         _ ->
             ( AST.Paragraph <| String.join "\n" <| List.reverse strings, blocks )

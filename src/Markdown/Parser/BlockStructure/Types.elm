@@ -61,3 +61,4 @@ type Leaf
     | EmptyLine String
     | SetextHeading Int String
     | ThematicBreak
+    | ATXHeading Int String

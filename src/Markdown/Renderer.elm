@@ -35,7 +35,7 @@ renderLeaf leaf =
         ThematicBreak ->
             Html.hr [] []
 
-        SetextHeading level content ->
+        Heading level content ->
             Html.node
                 ("h" ++ toString level)
                 []

@@ -17,4 +17,4 @@ type alias Inline =
 type Leaf
     = Paragraph Inline
     | ThematicBreak
-    | SetextHeading Int Inline
+    | Heading Int Inline
