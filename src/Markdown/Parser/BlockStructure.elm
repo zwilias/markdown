@@ -85,8 +85,25 @@ closeAndAdd state newContainers leaf =
                 |> flip addContainersToStack newContainers
                 |> flip addLeafToStack leafToAdd
     in
-        case leaf of
-            Text _ ->
+        case ( state.stack.current.type_, leaf ) of
+            ( FencedCode _ fence _, Text content ) ->
+                let
+                    marker : Char
+                    marker =
+                        String.toList fence |> List.head |> Maybe.withDefault '-'
+
+                    trimmedContent : String
+                    trimmedContent =
+                        String.trim content
+                in
+                    if (String.startsWith fence trimmedContent) && (String.all ((==) marker) trimmedContent) then
+                        closeContainers (state.unmatched + 1)
+                            (List.reverse <| currentContainers state.stack)
+                            |> containersToStack
+                    else
+                        addLeafToStack state.stack leaf
+
+            ( _, Text _ ) ->
                 -- Handle lazy continuations
                 if
                     (not <| isVerbatimContainer state.stack.current.type_)
@@ -97,13 +114,13 @@ closeAndAdd state newContainers leaf =
                 else
                     closeUnmatchedAndContinue leaf
 
-            SetextHeading lvl content ->
+            ( _, SetextHeading lvl content ) ->
                 if state.unmatched == 0 then
                     addLeafToStack state.stack leaf
                 else
                     addLeafToStack state.stack (Text content)
 
-            _ ->
+            ( _, _ ) ->
                 closeUnmatchedAndContinue leaf
 
 
@@ -552,7 +569,7 @@ continueContainer containerType =
                     , ignore (Exactly 4) ((==) ' ')
                     ]
 
-        FencedCode _ _ _ ->
+        FencedCode _ fence _ ->
             succeed ()
 
 
